@@ -1,0 +1,113 @@
+# MS-1 Sampler
+
+Roland MS-1 風のスマホ用サンプラー（Flutter / Android・iOS）。
+
+厳密なエミュレータではなく、「録って・切って・パッドで鳴らす」操作感を手軽に再現することを目指しています。
+Roland 社とは無関係の個人プロジェクトです。
+
+## できること
+
+- **録音**: マイクで録音（音楽向けに自動ゲイン・ノイズ除去はオフ）。停止するとトリミング画面へ
+- **読み込み**: WAV ファイル（PCM 8/16/24/32bit・float32、ステレオはモノラルに変換）
+- **トリミング**
+  - 波形上の開始/終了ハンドルをドラッグ、2 本指ピンチで拡大縮小
+  - ±1 / 10 / 100 ms の微調整
+  - ハンドルを離すとゼロクロスに吸着、切り出しの両端に 3 ms のフェード（プチノイズ防止）
+  - 「頭を音の立ち上がりへ」で開始位置を自動調整
+  - 拍数を選ぶと長さから BPM を表示（ループの長さ合わせ用）
+- **パッド**: 4×4 の 16 パッド
+  - ワンショット / 押している間 / ループ（もう一度叩くと停止）
+  - 指が触れた瞬間に発音。同じパッドは叩き直すと前の音を止める
+  - 「編集」モードでモード変更・トリミングし直し・削除
+
+## 今後の予定
+
+1. Android の再生音キャプチャ（AudioPlaybackCapture）で、他のアプリの音を直接録る
+   - 録音を拒否しているアプリ（多くのストリーミングサービス）の音は録れない
+2. ループ / 簡易シーケンサー、ビット数・サンプリングレートを落とす「MS-1 モード」
+3. パッドの内容の保存
+
+## 開発
+
+```sh
+flutter pub get
+flutter test
+flutter run
+```
+
+`lib/` の構成:
+
+| パス | 内容 |
+|---|---|
+| `audio/sample.dart` | モノラル PCM（float）とトリミング・ゼロクロス・立ち上がり検出 |
+| `audio/wav.dart` | WAV のエンコード / デコード |
+| `audio/recorder.dart` | マイク録音（`record` の PCM ストリーム） |
+| `audio/pad_engine.dart` | 16 パッドの発音（`flutter_soloud`） |
+| `ui/home_page.dart` | パッド画面 |
+| `ui/trim_page.dart` | トリミング画面 |
+
+アプリ ID は Android が `io.github.tazzoengineer.ms1_sampler`、iOS が `io.github.tazzoengineer.ms1Sampler`
+（iOS のバンドル ID には `_` を使えないため）。
+
+## ビルドとバージョン
+
+GitHub Actions が次の 2 つを実行します。
+
+| workflow | 内容 |
+|---|---|
+| `android.yml` | テスト → 署名済み APK をビルド → Artifact と GitHub Release に添付 |
+| `ios.yml` | 署名なしの iOS ビルドが通るかの確認のみ（配布はしない） |
+
+- 実行契機: `master` への push、または Actions 画面からの手動実行（任意のブランチ）
+- バージョン: `pubspec.yaml` の `version` を基準に `0.1.0-develop.N`（versionCode は `N`）
+- `N` は workflow の実行番号。常に増えるので、どのビルドも前のビルドの上書き更新としてインストールできる
+- ビルドごとに GitHub Release `develop-0.1.0.N`（同名のタグも作られる）を作り、APK を添付する。Artifact は 7 日で消える
+- 最新版: https://github.com/TazzoEngineer/ms1-sampler/releases/latest
+
+基準バージョンを上げるときは `pubspec.yaml` の `version: 0.1.0+1` の `0.1.0` を変更します（`+1` は使われません）。
+
+### スマホへのインストール
+
+1. スマホのブラウザで上の releases/latest を開く
+2. Assets の `ms1_sampler-0.1.0-develop.N.apk` をタップしてダウンロードし、開く
+3. 初回は「提供元不明のアプリ」の許可を求められるので、ブラウザに許可する。Play プロテクトの警告は「インストール」で続行
+
+## 署名
+
+リリース署名の鍵はリポジトリの外に置いています。
+
+| 場所 | 内容 |
+|---|---|
+| `~/.android-keys/ms1_sampler/release.jks` | 鍵ストア（PKCS12, alias `ms1_sampler`） |
+| `~/.android-keys/ms1_sampler/key.properties` | パスワード等。`android/key.properties` はここへのシンボリックリンク |
+
+**鍵ストアを失うと、以後のビルドを既存のアプリに上書きインストールできなくなります。** パスワードマネージャ等にバックアップしてください。
+
+`android/key.properties` がないときはデバッグ鍵で署名されます（`flutter run --release` 用）。
+
+### GitHub Secrets
+
+CI は次の Secrets から `key.properties` を生成します。未設定ならビルドを失敗させます。
+
+| Secret | 値 |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `release.jks` を base64 にしたもの |
+| `ANDROID_KEYSTORE_PASSWORD` | `key.properties` の `storePassword` |
+| `ANDROID_KEY_ALIAS` | `key.properties` の `keyAlias` |
+| `ANDROID_KEY_PASSWORD` | `key.properties` の `keyPassword` |
+
+登録（個人アカウントの gh トークンを使う）:
+
+```sh
+D=~/.android-keys/ms1_sampler; R=TazzoEngineer/ms1-sampler
+export GH_TOKEN=$(gh auth token --user TazzoEngineer)
+prop() { sed -n "s/^$1=//p" $D/key.properties | tr -d '\n'; }
+base64 -i $D/release.jks | tr -d '\n' | gh secret set ANDROID_KEYSTORE_BASE64 -R $R
+prop storePassword | gh secret set ANDROID_KEYSTORE_PASSWORD -R $R
+prop keyAlias | gh secret set ANDROID_KEY_ALIAS -R $R
+prop keyPassword | gh secret set ANDROID_KEY_PASSWORD -R $R
+```
+
+## ライセンス
+
+MIT
