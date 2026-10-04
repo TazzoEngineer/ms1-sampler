@@ -52,6 +52,23 @@ class Sample {
     return Sample(name: name, pcm: out, sampleRate: sampleRate);
   }
 
+  /// サンプリングレートを [rate] に変える（線形補間）。同じなら自分を返す。
+  Sample resampled(int rate) {
+    if (rate == sampleRate || length == 0) return this;
+    final n = (length * rate / sampleRate).round();
+    final out = Float32List(n);
+    final step = sampleRate / rate;
+    for (var i = 0; i < n; i++) {
+      final x = i * step;
+      final j = x.floor();
+      final t = x - j;
+      final a = pcm[j.clamp(0, length - 1)];
+      final b = pcm[(j + 1).clamp(0, length - 1)];
+      out[i] = a + (b - a) * t;
+    }
+    return Sample(name: name, pcm: out, sampleRate: rate);
+  }
+
   /// [pos] 付近（±[windowMs]）で最も近いゼロクロス位置を返す。
   int nearestZeroCrossing(int pos, {double windowMs = 5}) {
     final w = (sampleRate * windowMs / 1000).round();

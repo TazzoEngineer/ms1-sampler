@@ -70,6 +70,16 @@ void main() {
     });
   });
 
+  test('resampled: 44.1kHz → 48kHz で長さと波形が保たれる', () {
+    final s = sine(n: 44100);
+    final r = s.resampled(48000);
+    expect(r.sampleRate, 48000);
+    expect(r.length, 48000);
+    // 同じ時刻の値がほぼ同じ（0.5 秒の位置）
+    expect(r.pcm[24000], closeTo(s.pcm[22050], 0.01));
+    expect(identical(s.resampled(44100), s), isTrue);
+  });
+
   test('findOnset skips silence', () {
     final pcm = Float32List(1000)..[600] = 0.5;
     final s = Sample(name: 'x', pcm: pcm, sampleRate: 44100);

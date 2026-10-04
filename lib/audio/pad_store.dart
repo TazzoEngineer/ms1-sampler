@@ -7,10 +7,18 @@ import 'wav.dart';
 
 /// 保存されていたパッド 1 つ分。
 class SavedPad {
-  SavedPad(this.original, this.start, this.end, this.mode);
+  SavedPad(
+    this.original,
+    this.start,
+    this.end,
+    this.mode, {
+    this.periodBeats,
+    this.offsetBeats,
+  });
   final Sample original;
   final int start, end;
   final PadMode mode;
+  final double? periodBeats, offsetBeats;
 }
 
 /// パッドの割り当てと画面の設定を [dir] に保存する。
@@ -74,7 +82,14 @@ class PadStore {
         start,
         original.length,
       );
-      result[i] = SavedPad(original, start, end, mode);
+      result[i] = SavedPad(
+        original,
+        start,
+        end,
+        mode,
+        periodBeats: (p['period'] as num?)?.toDouble(),
+        offsetBeats: (p['offset'] as num?)?.toDouble(),
+      );
     }
     return result;
   }
@@ -104,6 +119,8 @@ class PadStore {
         'start': pad.start,
         'end': pad.end,
         'mode': pad.mode.name,
+        'period': pad.periodBeats,
+        'offset': pad.offsetBeats,
       });
     }
     await _writeAtomic(

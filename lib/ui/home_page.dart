@@ -10,7 +10,11 @@ import '../audio/playback_capture.dart';
 import '../audio/recorder.dart';
 import '../audio/sample.dart';
 import '../audio/wav.dart';
+import '../audio/loop_sequencer.dart';
+import '../audio/tempo.dart';
 import 'captures_page.dart';
+import 'loop_timing_editor.dart';
+import 'tempo_bar.dart';
 import 'trim_page.dart';
 
 enum _Source { playback, mic }
@@ -239,6 +243,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     await showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
         child: StatefulBuilder(
           builder: (ctx, setSheet) {
@@ -263,6 +268,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     },
                   ),
                 ),
+                if (pad.mode == PadMode.loop)
+                  LoopTimingEditor(
+                    engine: engine,
+                    index: i,
+                    onChanged: () => setState(() {}),
+                  ),
                 ListTile(
                   leading: const Icon(Icons.content_cut),
                   title: const Text('トリミングし直す'),
@@ -345,7 +356,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              TempoBar(engine: engine),
               Expanded(
                 child: Center(
                   child: AspectRatio(
@@ -520,20 +531,34 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final pad = engine.pads[i];
     final scheme = Theme.of(context).colorScheme;
     final has = pad.sample != null;
-    final playing = engine.isPlaying(i);
+    final loop = has && pad.mode == PadMode.loop;
+    final loopState = loop ? engine.loopState(i) : LoopState.off;
+    // ループは鳴り始め/止まりを小節の頭で待つので、待っている間は点滅させる
+    final waiting =
+        loopState == LoopState.starting || loopState == LoopState.stopping;
+    final blinkOn = DateTime.now().millisecond < 500;
+    final playing = loop
+        ? loopState == LoopState.playing ||
+              (loopState == LoopState.stopping && blinkOn)
+        : engine.isPlaying(i);
     final color = playing
         ? scheme.tertiary
         : has
         ? scheme.primaryContainer
         : scheme.surfaceContainerHighest;
     final fg = playing ? scheme.onTertiary : scheme.onPrimaryContainer;
+    final border = waiting && blinkOn
+        ? Border.all(color: scheme.tertiary, width: 3)
+        : editMode
+        ? Border.all(color: scheme.outline, width: 2)
+        : null;
 
     final body = AnimatedContainer(
       duration: const Duration(milliseconds: 60),
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(10),
-        border: editMode ? Border.all(color: scheme.outline, width: 2) : null,
+        border: border,
       ),
       padding: const EdgeInsets.all(6),
       child: Column(
@@ -547,7 +572,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           if (has)
             Text(
               pad.mode == PadMode.loop
-                  ? '⟲ ループ'
+                  ? '⟲ ${periodLabel(pad.periodBeats)}'
                   : pad.mode == PadMode.gate
                   ? '▮ ゲート'
                   : '',

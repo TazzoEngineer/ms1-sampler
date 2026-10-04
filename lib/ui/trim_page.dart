@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../audio/pad_engine.dart';
 import '../audio/sample.dart';
+import '../audio/tempo.dart';
 
 /// 波形を見ながら切り出し範囲を決め、パッドに割り当てる画面。
 ///
@@ -57,6 +58,9 @@ class _TrimPageState extends State<TrimPage> {
   bool _fitted = false;
 
   bool snap = true;
+
+  /// 長さを全体の BPM の 16 分音符単位に揃える。
+  bool beatSnap = false;
   int beats = 4;
   bool loopPreview = false;
   int? playhead;
@@ -142,7 +146,19 @@ class _TrimPageState extends State<TrimPage> {
       });
     }
     _drag = _Drag.none;
+    if (moved && beatSnap) setState(_snapLength);
     if (moved) _selectionChanged();
+  }
+
+  /// 16 分音符 1 つ分のサンプル数（全体の BPM で）。
+  double get _sixteenth =>
+      samplesPerBeat(widget.engine.bpm, s.sampleRate) * offsetStep;
+
+  /// 開始位置はそのままで、長さを 16 分音符の倍数にする。
+  void _snapLength() {
+    selEnd =
+        selStart +
+        snapToGrid(selEnd - selStart, _sixteenth, max: s.length - selStart);
   }
 
   Future<void> _togglePreview() =>
@@ -333,6 +349,26 @@ class _TrimPageState extends State<TrimPage> {
                       onChanged: (v) => setState(() => beats = v!),
                     ),
                     Text('≈ ${bpm.toStringAsFixed(1)} BPM'),
+                    TextButton(
+                      onPressed: () {
+                        widget.engine.bpm = (bpm * 10).round() / 10;
+                        setState(() {});
+                      },
+                      child: const Text('全体のBPMにする'),
+                    ),
+                    FilterChip(
+                      label: Text(
+                        '拍に吸着（BPM ${widget.engine.bpm.toStringAsFixed(1)}）',
+                      ),
+                      selected: beatSnap,
+                      onSelected: (v) {
+                        setState(() {
+                          beatSnap = v;
+                          if (v) _snapLength();
+                        });
+                        _selectionChanged();
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),

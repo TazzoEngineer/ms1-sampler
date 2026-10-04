@@ -4,6 +4,8 @@ import 'package:ms1_sampler/audio/sample.dart';
 
 /// SoLoud（ネイティブ）を使わない PadEngine。試聴の呼び出しを記録する。
 class FakeEngine extends PadEngine {
+  FakeEngine({super.sampleRate});
+
   /// preview() に渡された音（長さを確かめる用）。
   final previews = <Sample>[];
   bool previewLoop = false;

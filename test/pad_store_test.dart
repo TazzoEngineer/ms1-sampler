@@ -97,6 +97,18 @@ void main() {
     expect(after, isNot(before));
   });
 
+  test('ループの周期・オフセットも残る', () async {
+    final e1 = await launch();
+    await e1.assign(3, tone('snare'), 0, 1000, mode: PadMode.loop);
+    await e1.setLoopTiming(3, 2, 1);
+
+    final e2 = await launch();
+    expect(e2.pads[3].periodBeats, 2);
+    expect(e2.pads[3].offsetBeats, 1);
+    // 戻したときにシーケンサーにも入っている
+    expect(e2.sequencer.effectivePeriod(3), 2);
+  });
+
   test('画面の設定も残る', () async {
     final e1 = await launch();
     e1.store!.settings['snapshotSeconds'] = 30;

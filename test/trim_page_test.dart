@@ -157,6 +157,37 @@ void main() {
       await close(tester);
     });
 
+    testWidgets('拍に吸着: ハンドルを離すと長さが 16 分音符の倍数になる', (tester) async {
+      await open(tester);
+      engine.bpm = 100; // 16 分音符 = 44100 * 0.6 / 4 = 6615 フレーム
+      await tester.tap(find.textContaining('拍に吸着'));
+      await tester.pump();
+      // 吸着をオンにした時点で 1 秒 → 0.9 秒（16 分音符 6 つ）に揃う
+      final wave = tester.getRect(find.byKey(const ValueKey('waveform')));
+      await tester.timedDragFrom(
+        Offset(wave.left + wave.width * 0.9, wave.center.dy),
+        Offset(-wave.width * 0.27, 0),
+        const Duration(milliseconds: 300),
+      );
+      await tester.pump();
+      await tester.tap(find.text('割り当て'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      final len = engine.pads[0].end - engine.pads[0].start;
+      expect(len % 6615, 0);
+      expect(len, inInclusiveRange(rate * 0.5, rate * 0.75));
+    });
+
+    testWidgets('推定 BPM を全体の BPM にできる', (tester) async {
+      await open(tester);
+      // 1 秒 = 4 拍 → 240 BPM
+      await tester.tap(find.text('全体のBPMにする'));
+      await tester.pump();
+      expect(engine.bpm, 240);
+      await close(tester);
+    });
+
     testWidgets('割り当て: 選んだパッドに範囲と鳴らし方が入り、画面が閉じる', (tester) async {
       await open(tester);
       await tester.tap(find.text('-100ms').last);

@@ -9,11 +9,15 @@ import 'ui/home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final engine = PadEngine();
-  await engine.init(sampleRate: await PadEngine.outputSampleRate() ?? 44100);
+  final engine = PadEngine(
+    sampleRate: await PadEngine.outputSampleRate() ?? 44100,
+  );
+  await engine.init();
   final docs = await getApplicationDocumentsDirectory();
   final store = PadStore(Directory('${docs.path}/pads'));
   await engine.restore(await store.load());
+  final bpm = store.settings['bpm'];
+  if (bpm is num) engine.sequencer.bpm = bpm.toDouble();
   engine.store = store;
   runApp(Ms1App(engine: engine));
 }
