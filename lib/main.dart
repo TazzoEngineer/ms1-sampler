@@ -10,7 +10,7 @@ import 'ui/home_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final engine = PadEngine();
-  await engine.init();
+  await engine.init(sampleRate: await PadEngine.outputSampleRate() ?? 44100);
   final docs = await getApplicationDocumentsDirectory();
   final store = PadStore(Directory('${docs.path}/pads'));
   await engine.restore(await store.load());

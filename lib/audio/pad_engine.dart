@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 import 'pad_store.dart';
@@ -43,10 +47,27 @@ class PadEngine {
   SoundHandle? _previewVoice;
   int _loadCounter = 0;
 
-  Future<void> init() async {
+  /// [sampleRate] は端末の出力のレートにする（[outputSampleRate]）。違うレートだと
+  /// Android は低遅延の経路を使わず、叩いてから鳴るまで数百 ms 遅れる。
+  Future<void> init({int sampleRate = 44100}) async {
     if (!_soloud.isInitialized) {
-      // バッファを小さくしてパッドを叩いてから鳴るまでの遅れを減らす
-      await _soloud.init(bufferSize: 512, channels: Channels.stereo);
+      await _soloud.init(
+        sampleRate: sampleRate,
+        bufferSize: 512,
+        channels: Channels.stereo,
+      );
+    }
+  }
+
+  /// 端末の出力のサンプリングレート。分からなければ null。
+  static Future<int?> outputSampleRate() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      return await const MethodChannel(
+        'ms1/audio',
+      ).invokeMethod<int>('outputSampleRate');
+    } on PlatformException {
+      return null;
     }
   }
 
@@ -139,8 +160,13 @@ class PadEngine {
       pad.voice != null && _soloud.getIsValidVoiceHandle(pad.voice!);
 
   Future<void> _stopVoice(Pad pad) async {
-    if (_isPlaying(pad)) await _soloud.stop(pad.voice!);
+    final v = pad.voice;
     pad.voice = null;
+    // SoLoud の stop() は止めたあと「止まった」通知が来るまで待つ（最大 300ms）。
+    // 止める処理はその場で終わるので、待たずに次の音を鳴らす
+    if (v != null && _soloud.getIsValidVoiceHandle(v)) {
+      unawaited(_soloud.stop(v));
+    }
   }
 
   Future<void> stopAll() async {
@@ -158,13 +184,14 @@ class PadEngine {
   }
 
   Future<void> stopPreview() async {
-    if (_previewVoice != null &&
-        _soloud.getIsValidVoiceHandle(_previewVoice!)) {
-      await _soloud.stop(_previewVoice!);
-    }
+    final v = _previewVoice;
     _previewVoice = null;
-    if (_previewSource != null) await _soloud.disposeSource(_previewSource!);
+    if (v != null && _soloud.getIsValidVoiceHandle(v)) {
+      unawaited(_soloud.stop(v)); // 理由は _stopVoice と同じ
+    }
+    final src = _previewSource;
     _previewSource = null;
+    if (src != null) await _soloud.disposeSource(src);
   }
 
   /// 試聴の再生位置（サンプル数）。鳴っていなければ null。

@@ -3,6 +3,7 @@ package io.github.tazzoengineer.ms1_sampler
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -23,6 +24,17 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+
+        MethodChannel(messenger, "ms1/audio").setMethodCallHandler { call, result ->
+            when (call.method) {
+                // 端末の出力のサンプリングレート。これに合わせないと低遅延の経路を使えない
+                "outputSampleRate" -> result.success(
+                    getSystemService(AudioManager::class.java)
+                        .getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull(),
+                )
+                else -> result.notImplemented()
+            }
+        }
 
         MethodChannel(messenger, "ms1/capture").setMethodCallHandler { call, result ->
             val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
