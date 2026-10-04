@@ -6,11 +6,12 @@ import 'package:ms1_sampler/audio/sample.dart';
 import 'package:ms1_sampler/audio/wav.dart';
 
 Sample sine({int n = 4410, int rate = 44100}) => Sample(
-      name: 'sine',
-      sampleRate: rate,
-      pcm: Float32List.fromList(
-          List.generate(n, (i) => 0.5 * math.sin(2 * math.pi * 440 * i / rate))),
-    );
+  name: 'sine',
+  sampleRate: rate,
+  pcm: Float32List.fromList(
+    List.generate(n, (i) => 0.5 * math.sin(2 * math.pi * 440 * i / rate)),
+  ),
+);
 
 void main() {
   test('WAV encode → decode round trip', () {
@@ -35,6 +36,38 @@ void main() {
     final s = sine();
     final p = s.nearestZeroCrossing(30);
     expect(s.pcm[p - 1].sign != s.pcm[p].sign || s.pcm[p] == 0, isTrue);
+  });
+
+  group('normalized (マイク録音のゲイン)', () {
+    test('小さな音を最大振幅 0.89 まで持ち上げる', () {
+      final quiet = Sample(
+        name: 'q',
+        sampleRate: 44100,
+        pcm: Float32List.fromList([0.01, -0.02, 0.005]),
+      );
+      final n = quiet.normalized();
+      expect(n.peak, closeTo(0.89, 1e-6));
+      // 波形の形（比率）は変わらない
+      expect(n.pcm[0] / n.pcm[1], closeTo(-0.5, 1e-6));
+    });
+
+    test('大きすぎる音は下げる', () {
+      final loud = Sample(
+        name: 'l',
+        sampleRate: 44100,
+        pcm: Float32List.fromList([1.0, -0.5]),
+      );
+      expect(loud.normalized().peak, closeTo(0.89, 1e-6));
+    });
+
+    test('無音は持ち上げない（雑音だけになるため）', () {
+      final silent = Sample(
+        name: 's',
+        sampleRate: 44100,
+        pcm: Float32List.fromList([0, 0.00001, -0.00001]),
+      );
+      expect(silent.normalized().peak, silent.peak);
+    });
   });
 
   test('findOnset skips silence', () {

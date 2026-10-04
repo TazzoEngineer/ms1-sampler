@@ -34,9 +34,8 @@ class MicRecorder {
         autoGain: false,
         echoCancel: false,
         noiseSuppress: false,
-        androidConfig: AndroidRecordConfig(
-          audioSource: AndroidAudioSource.unprocessed,
-        ),
+        // UNPROCESSED は端末によってはかなり小さいので、通常のマイク入力を使う
+        androidConfig: AndroidRecordConfig(audioSource: AndroidAudioSource.mic),
       ),
     );
     _sub = stream.listen((chunk) {
@@ -58,7 +57,12 @@ class MicRecorder {
     _sub = null;
     final bytes = _chunks.takeBytes();
     if (bytes.isEmpty) return null;
-    return Sample(name: name, pcm: pcm16ToFloat(bytes), sampleRate: sampleRate);
+    // マイクの音量は端末や距離でばらつくので、録り終わったら最大音量に揃える
+    return Sample(
+      name: name,
+      pcm: pcm16ToFloat(bytes),
+      sampleRate: sampleRate,
+    ).normalized();
   }
 
   Future<void> dispose() async {

@@ -30,6 +30,28 @@ class Sample {
     return Sample(name: name ?? this.name, pcm: out, sampleRate: sampleRate);
   }
 
+  /// 最大振幅（0〜1）。
+  double get peak {
+    var p = 0.0;
+    for (final v in pcm) {
+      if (v.abs() > p) p = v.abs();
+    }
+    return p;
+  }
+
+  /// 最大振幅が [target] になるよう音量を揃える（ノーマライズ）。
+  /// 無音（[floor] 未満）のときは持ち上げると雑音だけになるのでそのまま返す。
+  Sample normalized({double target = 0.89, double floor = 1e-4}) {
+    final p = peak;
+    if (p < floor) return this;
+    final g = target / p;
+    final out = Float32List(length);
+    for (var i = 0; i < length; i++) {
+      out[i] = pcm[i] * g;
+    }
+    return Sample(name: name, pcm: out, sampleRate: sampleRate);
+  }
+
   /// [pos] 付近（±[windowMs]）で最も近いゼロクロス位置を返す。
   int nearestZeroCrossing(int pos, {double windowMs = 5}) {
     final w = (sampleRate * windowMs / 1000).round();

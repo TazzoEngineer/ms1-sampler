@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
+import 'pad_store.dart';
 import 'sample.dart';
 import 'wav.dart';
 
@@ -30,7 +32,13 @@ class PadEngine {
   static const padCount = 16;
 
   final pads = List.generate(padCount, (_) => Pad());
-  final _soloud = SoLoud.instance;
+
+  /// 割り当てを保存する先。null なら保存しない。
+  PadStore? store;
+  Future<void> _saving = Future.value();
+
+  // テストではネイティブの SoLoud を使わないよう、使うときに初めて取りに行く
+  SoLoud get _soloud => SoLoud.instance;
   AudioSource? _previewSource;
   SoundHandle? _previewVoice;
   int _loadCounter = 0;
@@ -51,25 +59,60 @@ class PadEngine {
     int start,
     int end, {
     PadMode? mode,
+    bool persist = true,
   }) async {
     final pad = pads[index];
-    await clear(index);
+    await _unload(pad);
     pad.original = original;
     pad.start = start;
     pad.end = end;
     pad.sample = original.trimmed(start, end);
     if (mode != null) pad.mode = mode;
-    pad.source = await _load(pad.sample!);
+    pad.source = await loadSource(pad.sample!);
+    if (persist) await save();
+  }
+
+  /// 保存されていた割り当てを戻す。
+  Future<void> restore(List<SavedPad?> saved) async {
+    for (var i = 0; i < saved.length && i < padCount; i++) {
+      final p = saved[i];
+      if (p == null) continue;
+      await assign(i, p.original, p.start, p.end, mode: p.mode, persist: false);
+    }
   }
 
   Future<void> clear(int index) async {
+    await _unload(pads[index]);
+    await save();
+  }
+
+  Future<void> setMode(int index, PadMode mode) async {
     final pad = pads[index];
+    if (pad.mode == mode) return;
+    await _stopVoice(pad);
+    pad.mode = mode;
+    await save();
+  }
+
+  /// 保存は順番に行う（前の保存が終わる前に次を始めない）。
+  Future<void> save() {
+    final s = store;
+    if (s == null) return Future.value();
+    return _saving = _saving
+        .then((_) => s.save(pads))
+        .catchError((Object e) => debugPrint('パッドの保存に失敗: $e'));
+  }
+
+  Future<void> _unload(Pad pad) async {
     await _stopVoice(pad);
     if (pad.source != null) await _soloud.disposeSource(pad.source!);
     pad.source = null;
     pad.sample = null;
     pad.original = null;
   }
+
+  /// 鳴らせる形にして読み込む（テストでは差し替える）。
+  Future<AudioSource?> loadSource(Sample s) => _load(s);
 
   /// パッドを押した。同じパッドの前の音は止める（チョーク）。
   /// ループモードでは鳴っている状態でもう一度押すと止まる。

@@ -52,15 +52,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       const Duration(milliseconds: 100),
       (_) => mounted ? setState(() {}) : null,
     );
+    snapshotSeconds = _settings['snapshotSeconds'] as int? ?? snapshotSeconds;
     _initCapture();
+  }
+
+  Map<String, Object?> get _settings => engine.store?.settings ?? {};
+
+  void _saveSetting(String key, Object? value) {
+    final store = engine.store;
+    if (store == null) return;
+    store.settings[key] = value;
+    engine.save();
   }
 
   Future<void> _initCapture() async {
     if (!await PlaybackCapture.isSupported()) return;
     _captureSub = PlaybackCapture.events.listen(_onCaptureEvent);
+    // サービスが前回から動き続けていても、保存した秒数を使う
+    await PlaybackCapture.setSnapshotSeconds(snapshotSeconds);
     setState(() {
       captureSupported = true;
-      source = _Source.playback;
+      source =
+          _Source.values.asNameMap()[_settings['source']] ?? _Source.playback;
     });
     await _syncCapture();
   }
@@ -243,8 +256,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         .toList(),
                     selected: {pad.mode},
                     showSelectedIcon: false,
-                    onSelectionChanged: (v) {
-                      setSheet(() => pad.mode = v.first);
+                    onSelectionChanged: (v) async {
+                      await engine.setMode(i, v.first);
+                      setSheet(() {});
                       setState(() {});
                     },
                   ),
@@ -365,7 +379,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   showSelectedIcon: false,
                   onSelectionChanged: rec || capturing
                       ? null
-                      : (v) => setState(() => source = v.first),
+                      : (v) {
+                          setState(() => source = v.first);
+                          _saveSetting('source', v.first.name);
+                        },
                 ),
                 const SizedBox(height: 12),
               ],
@@ -451,6 +468,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               onSelectionChanged: (v) {
                 setState(() => snapshotSeconds = v.first);
                 PlaybackCapture.setSnapshotSeconds(v.first);
+                _saveSetting('snapshotSeconds', v.first);
               },
             ),
           ),

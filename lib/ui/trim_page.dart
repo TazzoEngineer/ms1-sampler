@@ -34,6 +34,16 @@ class TrimPage extends StatefulWidget {
 
 enum _Drag { none, start, end, view }
 
+/// 試聴中のカーソル位置（元の音の中のサンプル位置）。
+///
+/// [pos] は試聴している切り出しの中での再生位置。ループ中は先頭に戻し、
+/// それ以外でも出力バッファ分の先読みで長さを越えることがあるので範囲内に収める。
+int previewPlayhead(int pos, int start, int length, {required bool loop}) {
+  if (length <= 0) return start;
+  final p = loop ? pos % length : pos.clamp(0, length);
+  return start + (p < 0 ? 0 : p);
+}
+
 class _TrimPageState extends State<TrimPage> {
   Sample get s => widget.sample;
 
@@ -50,6 +60,12 @@ class _TrimPageState extends State<TrimPage> {
   int beats = 4;
   bool loopPreview = false;
   int? playhead;
+
+  // 試聴中の範囲（試聴を始めた時点の選択範囲）。試聴していなければ null。
+  int? _pvStart;
+  int _pvLen = 0;
+  bool _pvLoop = false;
+  bool get previewing => _pvStart != null;
   Timer? _ticker;
 
   _Drag _drag = _Drag.none;
@@ -118,6 +134,7 @@ class _TrimPageState extends State<TrimPage> {
   }
 
   void _onScaleEnd(ScaleEndDetails d) {
+    final moved = _drag == _Drag.start || _drag == _Drag.end;
     if (snap) {
       setState(() {
         if (_drag == _Drag.start) selStart = s.nearestZeroCrossing(selStart);
@@ -125,26 +142,53 @@ class _TrimPageState extends State<TrimPage> {
       });
     }
     _drag = _Drag.none;
+    if (moved) _selectionChanged();
   }
 
-  Future<void> _togglePreview() async {
-    if (playhead != null) {
-      await _stopPreview();
-      return;
-    }
-    await widget.engine.preview(s.trimmed(selStart, selEnd), loop: loopPreview);
+  Future<void> _togglePreview() =>
+      previewing ? _stopPreview() : _startPreview();
+
+  Future<void> _startPreview() async {
+    _ticker?.cancel();
+    final start = selStart, end = selEnd, loop = loopPreview;
+    await widget.engine.preview(s.trimmed(start, end), loop: loop);
+    if (!mounted) return;
+    setState(() {
+      _pvStart = start;
+      _pvLen = end - start;
+      _pvLoop = loop;
+      playhead = start;
+    });
     _ticker = Timer.periodic(const Duration(milliseconds: 30), (_) {
-      final pos = widget.engine.previewPosition(s.sampleRate);
       if (!mounted) return;
-      setState(() => playhead = pos == null ? null : selStart + pos);
-      if (pos == null) _ticker?.cancel();
+      final pos = widget.engine.previewPosition(s.sampleRate);
+      setState(() {
+        if (pos == null) {
+          // 最後まで鳴り終わった
+          _ticker?.cancel();
+          _pvStart = null;
+          playhead = null;
+        } else {
+          playhead = previewPlayhead(pos, _pvStart!, _pvLen, loop: _pvLoop);
+        }
+      });
     });
   }
 
   Future<void> _stopPreview() async {
     _ticker?.cancel();
     await widget.engine.stopPreview();
-    if (mounted) setState(() => playhead = null);
+    if (mounted) {
+      setState(() {
+        _pvStart = null;
+        playhead = null;
+      });
+    }
+  }
+
+  /// 選択範囲や鳴らし方が変わった。試聴中なら新しい範囲で鳴らし直す。
+  void _selectionChanged() {
+    if (previewing) _startPreview();
   }
 
   void _nudge(bool isStart, int ms) {
@@ -156,6 +200,7 @@ class _TrimPageState extends State<TrimPage> {
         selEnd = (selEnd + d).clamp(selStart + 1, s.length);
       }
     });
+    _selectionChanged();
   }
 
   void _startToOnset() {
@@ -164,6 +209,7 @@ class _TrimPageState extends State<TrimPage> {
       selStart = snap ? s.nearestZeroCrossing(p) : p;
       if (selStart >= selEnd) selEnd = s.length;
     });
+    _selectionChanged();
   }
 
   Future<void> _assign() async {
@@ -219,6 +265,7 @@ class _TrimPageState extends State<TrimPage> {
                     _fitAll();
                   }
                   return GestureDetector(
+                    key: const ValueKey('waveform'),
                     onScaleStart: _onScaleStart,
                     onScaleUpdate: _onScaleUpdate,
                     onScaleEnd: _onScaleEnd,
@@ -270,7 +317,10 @@ class _TrimPageState extends State<TrimPage> {
                     FilterChip(
                       label: const Text('ループで試聴'),
                       selected: loopPreview,
-                      onSelected: (v) => setState(() => loopPreview = v),
+                      onSelected: (v) {
+                        setState(() => loopPreview = v);
+                        _selectionChanged();
+                      },
                     ),
                     DropdownButton<int>(
                       value: beats,
@@ -290,10 +340,8 @@ class _TrimPageState extends State<TrimPage> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        icon: Icon(
-                          playhead != null ? Icons.stop : Icons.play_arrow,
-                        ),
-                        label: Text(playhead != null ? '停止' : '試聴'),
+                        icon: Icon(previewing ? Icons.stop : Icons.play_arrow),
+                        label: Text(previewing ? '停止' : '試聴'),
                         onPressed: _togglePreview,
                       ),
                     ),

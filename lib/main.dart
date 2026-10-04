@@ -1,12 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'audio/pad_engine.dart';
+import 'audio/pad_store.dart';
 import 'ui/home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final engine = PadEngine();
   await engine.init();
+  final docs = await getApplicationDocumentsDirectory();
+  final store = PadStore(Directory('${docs.path}/pads'));
+  await engine.restore(await store.load());
+  engine.store = store;
   runApp(Ms1App(engine: engine));
 }
 
